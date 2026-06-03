@@ -1,0 +1,31 @@
+# Python pycache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+venv/
+.env
+
+# Large Assets and Pretrained Weights
+weights/
+vfms/
+*.tar.zst
+*.tar
+*.zst
+*.zip
+*.pt
+*.npz
+
+# Outputs & Temporary Files
+out*/
+tmp/
+*.mov
+*.mp4
+*.exr
+*.png
+*.jpg
+*.jpeg
+*.f16
+*.f32
