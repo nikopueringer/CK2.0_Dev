@@ -617,6 +617,38 @@ def run_inference(model, input_path: str, output_dir: str, cfg: InferenceConfig,
                 os.path.join(output_dir, f"{clip_name}_{suffix[name]}{ext}"),
                 fps, (W_out, H_out), writer_cfg, channels=channels, color_trc=color_trc)
 
+        # Write settings log file in the output folder
+        settings_path = os.path.join(output_dir, f"{clip_name}_settings.txt")
+        try:
+            with open(settings_path, "w") as sf:
+                sf.write(f"CorridorKey v2 Inference Settings Log\n")
+                sf.write(f"====================================\n")
+                sf.write(f"Input: {input_path}\n")
+                sf.write(f"Output Directory: {output_dir}\n")
+                sf.write(f"Resolution: {W_out}x{H_out}\n")
+                sf.write(f"FPS: {fps}\n")
+                sf.write(f"Outputs: {', '.join(sorted(cfg.outputs))}\n")
+                sf.write(f"Hint First Frame: {initial_hint_path}\n")
+                sf.write(f"Hint Video: {hint_video_path}\n")
+                sf.write(f"Hint Quality (Trust): {cfg.hint_quality}\n")
+                sf.write(f"Carry Hint: {cfg.carry_hint}\n")
+                sf.write(f"Carry Hint Quality: {cfg.carry_hint_quality}\n")
+                sf.write(f"Despill Strength: {cfg.despill_strength}\n")
+                sf.write(f"Cutout Linear: {cfg.cutout_linear}\n")
+                sf.write(f"Frame Dir Linear: {cfg.frame_dir_linear}\n")
+                sf.write(f"Hann Chunk: {cfg.hann_chunk}\n")
+                sf.write(f"Hann Stride: {cfg.hann_stride}\n")
+                sf.write(f"Low VRAM: {cfg.low_vram}\n")
+                sf.write(f"Model Scale: {cfg.model_scale}\n")
+                sf.write(f"Num Frames: {cfg.num_frames}\n")
+                sf.write(f"Start Mode: {cfg.start_mode}\n")
+                sf.write(f"Seed: {cfg.seed}\n")
+                sf.write(f"Linear Brightness: {cfg.linear_brightness}\n")
+                sf.write(f"Linear Contrast: {cfg.linear_contrast}\n")
+                sf.write(f"Linear Contrast Pivot: {cfg.linear_contrast_pivot}\n")
+        except Exception as e:
+            print(f"[WARNING] Failed to write settings file: {e}")
+
         initial_hint = (
             load_initial_hint_frame(initial_hint_path, meta)
             if none_path(initial_hint_path) is not None else None
