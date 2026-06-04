@@ -230,11 +230,17 @@ def main():
         any_have_hints = False
         has_video_hint = False
         for clip in batch_clips:
-            hint = find_alpha_hint(clip)
-            if hint:
-                any_have_hints = True
-                if hint.suffix.lower() in {'.mp4', '.mov', '.avi', '.mkv', '.webm'}:
+            if clip.is_dir():
+                _, seq_hint_dir = resolve_image_seq_dirs(clip)
+                if seq_hint_dir:
+                    any_have_hints = True
                     has_video_hint = True
+            else:
+                hint = find_alpha_hint(clip)
+                if hint:
+                    any_have_hints = True
+                    if hint.suffix.lower() in {'.mp4', '.mov', '.avi', '.mkv', '.webm'}:
+                        has_video_hint = True
                     
         # Config options (Hint variables apply only to clips with hints)
         hint_quality = 0.75
