@@ -108,7 +108,7 @@ class InferenceConfig:
     linear_contrast: float = 1.0
     linear_contrast_pivot: float = 0.18
     frame_dir_fps: float = 24.0
-    frame_dir_exr_linear: bool = False
+    frame_dir_linear: bool = False
     cutout_linear: bool = False
     despill_strength: float = 0.5
 
@@ -580,7 +580,7 @@ def run_inference(model, input_path: str, output_dir: str, cfg: InferenceConfig,
         meta = probe_frame_dir_meta(
             input_path, num_frames=cfg.num_frames,
             shape_quantum=cfg.shape_quantum, fps=cfg.frame_dir_fps,
-            exr_linear=cfg.frame_dir_exr_linear, model_scale=cfg.model_scale)
+            exr_linear=cfg.frame_dir_linear, model_scale=cfg.model_scale)
     else:
         meta = probe_video_meta(
             input_path, num_frames=cfg.num_frames,

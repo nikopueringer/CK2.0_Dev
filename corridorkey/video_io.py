@@ -246,7 +246,7 @@ def probe_video_meta(video_path: str, *, num_frames: int, shape_quantum: int,
 
 def _read_frame_dir_views(path: str, *, exr_linear: bool):
     raw = read_image_rgb(path)
-    if path.lower().endswith(".exr") and exr_linear:
+    if exr_linear:
         linear = raw.astype(np.float32, copy=False)
         display = np.clip(cu.linear_to_srgb(np.maximum(linear, 0.0)), 0.0, 1.0)
     else:

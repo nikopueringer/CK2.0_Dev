@@ -72,8 +72,8 @@ def main():
     ap.add_argument("--model_scale", type=float, default=1.0,
                     help="Lanczos scale before model inference; 1.0 is native.")
     ap.add_argument("--frame_dir_fps", type=float, default=24.0)
-    ap.add_argument("--frame_dir_exr_linear", action="store_true",
-                    help="Treat EXR frame-directory inputs as scene-linear RGB.")
+    ap.add_argument("--frame_dir_linear", action="store_true",
+                    help="Treat frame-directory inputs as scene-linear RGB.")
     ap.add_argument("--cutout_linear", action="store_true",
                     help="Export cutout as straight linear RGB instead of straight sRGB.")
     ap.add_argument("--despill_strength", type=float, default=0.5,
@@ -136,7 +136,7 @@ def main():
         linear_contrast=args.linear_contrast,
         linear_contrast_pivot=args.linear_contrast_pivot,
         frame_dir_fps=args.frame_dir_fps,
-        frame_dir_exr_linear=args.frame_dir_exr_linear,
+        frame_dir_linear=args.frame_dir_linear,
         cutout_linear=args.cutout_linear,
         despill_strength=args.despill_strength,
     )

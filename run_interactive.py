@@ -94,16 +94,50 @@ def find_first_frame_hint(input_path):
                     
     return hint_files[0] if hint_files else None
 
+def resolve_image_seq_dirs(dir_path):
+    dir_path = Path(dir_path)
+    if not dir_path.is_dir():
+        return None, None
+    input_dir = None
+    alphahint_dir = None
+    try:
+        for item in dir_path.iterdir():
+            if item.is_dir():
+                name_lower = item.name.lower()
+                if name_lower == "input":
+                    input_dir = item
+                elif name_lower == "alphahint":
+                    alphahint_dir = item
+    except Exception:
+        pass
+    return input_dir, alphahint_dir
+
+def check_image_sequence_dir(dir_path):
+    input_dir, alphahint_dir = resolve_image_seq_dirs(dir_path)
+    if input_dir:
+        image_extensions = {'.png', '.jpg', '.jpeg', '.exr', '.tiff', '.tif', '.webp', '.dpx'}
+        try:
+            for file in input_dir.iterdir():
+                if file.is_file() and file.suffix.lower() in image_extensions:
+                    return input_dir, alphahint_dir
+        except Exception:
+            pass
+    return None, None
+
 def get_batch_clips(dir_path):
     dir_path = Path(dir_path)
     video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
     
     clips = []
     try:
-        # Find video files directly in the directory (excluding hints)
+        # Find video files and valid image sequence folders directly in the directory
         for item in sorted(dir_path.iterdir()):
             if item.is_file() and item.suffix.lower() in video_extensions:
                 if "_alphahint" not in item.name.lower():
+                    clips.append(item)
+            elif item.is_dir():
+                seq_input_dir, _ = check_image_sequence_dir(item)
+                if seq_input_dir:
                     clips.append(item)
     except Exception as e:
         print(f"{Colors.YELLOW}[WARNING] Error scanning directory: {e}{Colors.RESET}")
@@ -172,7 +206,14 @@ def main():
         
     print(f"Resolved input path: {Colors.GREEN}{input_path}{Colors.RESET}")
     
-    is_batch = os.path.isdir(input_path)
+    is_image_seq_dir = False
+    seq_input_dir = None
+    seq_hint_dir = None
+    seq_input_dir, seq_hint_dir = check_image_sequence_dir(input_path)
+    if seq_input_dir:
+        is_image_seq_dir = True
+        
+    is_batch = os.path.isdir(input_path) and not is_image_seq_dir
     
     if is_batch:
         # ======================================================================
@@ -277,6 +318,21 @@ def main():
             )
             despill_strength = float(val)
 
+        # Incoming Image Color Space Configuration
+        frame_dir_linear = True
+        has_image_seq = any(clip.is_dir() for clip in batch_clips)
+        if has_image_seq:
+            print_subheader("Incoming Image Color Space")
+            gamma_choice = prompt_choices(
+                "Select incoming image color space / input gamma:",
+                [
+                    "Linear gamma (Default for linear EXR sequence)",
+                    "sRGB input gamma (default for PNG sequences)"
+                ],
+                default=1
+            )
+            frame_dir_linear = (gamma_choice == 1)
+
         # VRAM profile
         low_vram = prompt_confirm("Enable Low VRAM mode? (Recommended for 4K video or consumer GPUs)", default=False)
         temp_dir = "/tmp/corridorkey_v2"
@@ -350,12 +406,17 @@ def main():
         # Print Batch Execution Plan
         print_header(f"Batch Execution Plan ({len(batch_clips)} clips)")
         for idx, clip in enumerate(batch_clips, 1):
-            hint = find_alpha_hint(clip)
-            if hint:
-                hint_type = "Full Hint Video" if hint.suffix.lower() in {'.mp4', '.mov', '.avi', '.mkv', '.webm'} else "First-Frame Hint"
-                print(f"  {idx}) {Colors.CYAN}{clip.name}{Colors.RESET} -> running in {Colors.GREEN}{hint_type}{Colors.RESET} mode (using {hint.name})")
+            if clip.is_dir():
+                _, seq_hint_dir = resolve_image_seq_dirs(clip)
+                hint_str = f"using {seq_hint_dir.name}" if seq_hint_dir else "No Hint"
+                print(f"  {idx}) {Colors.CYAN}{clip.name}{Colors.RESET} (Image Sequence) -> running in {Colors.GREEN}{hint_str}{Colors.RESET} mode")
             else:
-                print(f"  {idx}) {Colors.CYAN}{clip.name}{Colors.RESET} -> running in {Colors.YELLOW}No Hint{Colors.RESET} mode")
+                hint = find_alpha_hint(clip)
+                if hint:
+                    hint_type = "Full Hint Video" if hint.suffix.lower() in {'.mp4', '.mov', '.avi', '.mkv', '.webm'} else "First-Frame Hint"
+                    print(f"  {idx}) {Colors.CYAN}{clip.name}{Colors.RESET} -> running in {Colors.GREEN}{hint_type}{Colors.RESET} mode (using {hint.name})")
+                else:
+                    print(f"  {idx}) {Colors.CYAN}{clip.name}{Colors.RESET} -> running in {Colors.YELLOW}No Hint{Colors.RESET} mode")
 
         confirm_batch = prompt_confirm(f"Do you want to run this batch of {len(batch_clips)} clips now?", default=True)
         if not confirm_batch:
@@ -367,23 +428,34 @@ def main():
         for idx, clip in enumerate(batch_clips, 1):
             print_header(f"Processing Clip {idx} of {len(batch_clips)}: {clip.name}")
             
-            # Auto-detect hint type for this specific clip
+            # Resolve actual input path and hint path
             clip_hint_video_path = None
             clip_hint_first_frame = None
             clip_inference_mode = 1
             
-            hint = find_alpha_hint(clip)
-            if hint:
-                if hint.suffix.lower() in {'.mp4', '.mov', '.avi', '.mkv', '.webm'}:
-                    clip_hint_video_path = str(hint)
+            if clip.is_dir():
+                seq_input_dir, seq_hint_dir = resolve_image_seq_dirs(clip)
+                clip_input_to_pass = str(seq_input_dir)
+                if seq_hint_dir:
+                    clip_hint_video_path = str(seq_hint_dir)
                     clip_inference_mode = 3
-                    print(f"Applying companion AlphaHint video: {Colors.CYAN}{hint.name}{Colors.RESET}")
+                    print(f"Applying companion AlphaHint image sequence: {Colors.CYAN}{seq_hint_dir.name}{Colors.RESET}")
                 else:
-                    clip_hint_first_frame = str(hint)
-                    clip_inference_mode = 2
-                    print(f"Applying companion First-Frame Hint image: {Colors.CYAN}{hint.name}{Colors.RESET}")
+                    print("Running image sequence in No Hint mode.")
             else:
-                print(f"Running clip in {Colors.YELLOW}No Hint{Colors.RESET} mode.")
+                clip_input_to_pass = str(clip)
+                hint = find_alpha_hint(clip)
+                if hint:
+                    if hint.suffix.lower() in {'.mp4', '.mov', '.avi', '.mkv', '.webm'}:
+                        clip_hint_video_path = str(hint)
+                        clip_inference_mode = 3
+                        print(f"Applying companion AlphaHint video: {Colors.CYAN}{hint.name}{Colors.RESET}")
+                    else:
+                        clip_hint_first_frame = str(hint)
+                        clip_inference_mode = 2
+                        print(f"Applying companion First-Frame Hint image: {Colors.CYAN}{hint.name}{Colors.RESET}")
+                else:
+                    print(f"Running clip in {Colors.YELLOW}No Hint{Colors.RESET} mode.")
 
             # Resolve output directory
             if custom_output_parent:
@@ -394,7 +466,7 @@ def main():
 
             # Assemble command
             cmd = [sys.executable, str(package_root / "infer.py")]
-            cmd.extend(["--input", str(clip)])
+            cmd.extend(["--input", clip_input_to_pass])
             cmd.extend(["--output_dir", output_dir])
             
             if clip_hint_first_frame:
@@ -413,6 +485,8 @@ def main():
             if cutout_linear:
                 cmd.append("--cutout_linear")
             cmd.extend(["--despill_strength", str(despill_strength)])
+            if clip.is_dir() and frame_dir_linear:
+                cmd.append("--frame_dir_linear")
             
             if low_vram:
                 cmd.append("--low_vram")
@@ -459,14 +533,23 @@ def main():
         hint_first_frame = None
         inference_mode = 1 # 1: No Hint, 2: First-Frame, 3: Full Hint Video
         
-        discovered_hint = find_alpha_hint(input_path)
-        if discovered_hint:
-            print(f"\n{Colors.YELLOW}>>> Found matching AlphaHint file: {discovered_hint.name}{Colors.RESET}")
-            use_discovered = prompt_confirm(f"Would you like to use this file as the Full Hint Video?", default=True)
-            if use_discovered:
-                hint_video_path = str(discovered_hint)
-                inference_mode = 3
-                print(f"Selected mode: {Colors.GREEN}Full Hint Video (using auto-discovered file){Colors.RESET}")
+        if is_image_seq_dir:
+            if seq_hint_dir:
+                print(f"\n{Colors.YELLOW}>>> Found matching AlphaHint directory: {seq_hint_dir.name}{Colors.RESET}")
+                use_discovered = prompt_confirm(f"Would you like to use this directory as the Full Hint Video?", default=True)
+                if use_discovered:
+                    hint_video_path = str(seq_hint_dir)
+                    inference_mode = 3
+                    print(f"Selected mode: {Colors.GREEN}Full Hint Video (using auto-discovered directory){Colors.RESET}")
+        else:
+            discovered_hint = find_alpha_hint(input_path)
+            if discovered_hint:
+                print(f"\n{Colors.YELLOW}>>> Found matching AlphaHint file: {discovered_hint.name}{Colors.RESET}")
+                use_discovered = prompt_confirm(f"Would you like to use this file as the Full Hint Video?", default=True)
+                if use_discovered:
+                    hint_video_path = str(discovered_hint)
+                    inference_mode = 3
+                    print(f"Selected mode: {Colors.GREEN}Full Hint Video (using auto-discovered file){Colors.RESET}")
                 
         # 3. Prompt for Inference Mode if not already selected via auto-hint
         if inference_mode == 1 and not hint_video_path:
@@ -587,6 +670,20 @@ def main():
             )
             despill_strength = float(val)
 
+        # Incoming Image Color Space Configuration
+        frame_dir_linear = True
+        if is_image_seq_dir:
+            print_subheader("Incoming Image Color Space")
+            gamma_choice = prompt_choices(
+                "Select incoming image color space / input gamma:",
+                [
+                    "Linear gamma (Default for linear EXR sequence)",
+                    "sRGB input gamma (default for PNG sequences)"
+                ],
+                default=1
+            )
+            frame_dir_linear = (gamma_choice == 1)
+
         # 6. VRAM profile
         low_vram = prompt_confirm("Enable Low VRAM mode? (Recommended for 4K video or consumer GPUs)", default=False)
         temp_dir = "/tmp/corridorkey_v2"
@@ -679,37 +776,52 @@ def main():
                     
                 print(f"Resolved input path: {Colors.GREEN}{input_path}{Colors.RESET}")
                 
+                is_image_seq_dir = False
+                seq_input_dir = None
+                seq_hint_dir = None
+                seq_input_dir, seq_hint_dir = check_image_sequence_dir(input_path)
+                if seq_input_dir:
+                    is_image_seq_dir = True
+                
                 # Resolve hints for the new video
                 hint_video_path = None
                 hint_first_frame = None
                 
                 if inference_mode == 2:
-                    # Try to auto-discover first-frame hint in new folder
-                    discovered = find_first_frame_hint(input_path)
-                    if discovered:
-                        print(f"{Colors.YELLOW}>>> Found matching First-Frame Hint: {discovered.name}{Colors.RESET}")
-                        hint_first_frame = str(discovered)
+                    if is_image_seq_dir:
+                        print(f"{Colors.YELLOW}[WARNING] First-frame hint mode is not supported for directory image sequence structures. Skipping first-frame hint.{Colors.RESET}")
                     else:
-                        hint_str = input(f"\n{Colors.BOLD}{Colors.BLUE}Enter path to first-frame hint image/matte for this video (or press Enter to skip hint):{Colors.RESET}\n").strip()
-                        if hint_str:
-                            hint_first_frame = clean_path(translate_windows_path(hint_str))
-                            if not os.path.exists(hint_first_frame):
-                                print(f"{Colors.YELLOW}[ERROR] Hint path does not exist. Running this clip without hints.{Colors.RESET}")
-                                hint_first_frame = None
+                        # Try to auto-discover first-frame hint in new folder
+                        discovered = find_first_frame_hint(input_path)
+                        if discovered:
+                            print(f"{Colors.YELLOW}>>> Found matching First-Frame Hint: {discovered.name}{Colors.RESET}")
+                            hint_first_frame = str(discovered)
+                        else:
+                            hint_str = input(f"\n{Colors.BOLD}{Colors.BLUE}Enter path to first-frame hint image/matte for this video (or press Enter to skip hint):{Colors.RESET}\n").strip()
+                            if hint_str:
+                                hint_first_frame = clean_path(translate_windows_path(hint_str))
+                                if not os.path.exists(hint_first_frame):
+                                    print(f"{Colors.YELLOW}[ERROR] Hint path does not exist. Running this clip without hints.{Colors.RESET}")
+                                    hint_first_frame = None
                                 
                 elif inference_mode == 3:
-                    # Try to auto-discover full hint video in new folder
-                    discovered = find_alpha_hint(input_path)
-                    if discovered:
-                        print(f"{Colors.YELLOW}>>> Found matching AlphaHint file: {discovered.name}{Colors.RESET}")
-                        hint_video_path = str(discovered)
+                    if is_image_seq_dir:
+                        if seq_hint_dir:
+                            print(f"{Colors.YELLOW}>>> Found matching AlphaHint directory: {seq_hint_dir.name}{Colors.RESET}")
+                            hint_video_path = str(seq_hint_dir)
                     else:
-                        hint_str = input(f"\n{Colors.BOLD}{Colors.BLUE}Enter path to full hint video/directory for this video (or press Enter to skip hint):{Colors.RESET}\n").strip()
-                        if hint_str:
-                            hint_video_path = clean_path(translate_windows_path(hint_str))
-                            if not os.path.exists(hint_video_path):
-                                print(f"{Colors.YELLOW}[ERROR] Hint path does not exist. Running this clip without hints.{Colors.RESET}")
-                                hint_video_path = None
+                        # Try to auto-discover full hint video in new folder
+                        discovered = find_alpha_hint(input_path)
+                        if discovered:
+                            print(f"{Colors.YELLOW}>>> Found matching AlphaHint file: {discovered.name}{Colors.RESET}")
+                            hint_video_path = str(discovered)
+                        else:
+                            hint_str = input(f"\n{Colors.BOLD}{Colors.BLUE}Enter path to full hint video/directory for this video (or press Enter to skip hint):{Colors.RESET}\n").strip()
+                            if hint_str:
+                                hint_video_path = clean_path(translate_windows_path(hint_str))
+                                if not os.path.exists(hint_video_path):
+                                    print(f"{Colors.YELLOW}[ERROR] Hint path does not exist. Running this clip without hints.{Colors.RESET}")
+                                    hint_video_path = None
 
             is_first_run = False
 
@@ -727,7 +839,8 @@ def main():
             package_root = Path(__file__).resolve().parent
             cmd = [sys.executable, str(package_root / "infer.py")]
             
-            cmd.extend(["--input", input_path])
+            input_path_to_pass = str(seq_input_dir) if is_image_seq_dir else input_path
+            cmd.extend(["--input", input_path_to_pass])
             cmd.extend(["--output_dir", output_dir])
             
             if hint_first_frame:
@@ -746,6 +859,8 @@ def main():
             if cutout_linear:
                 cmd.append("--cutout_linear")
             cmd.extend(["--despill_strength", str(despill_strength)])
+            if is_image_seq_dir and frame_dir_linear:
+                cmd.append("--frame_dir_linear")
             
             if low_vram:
                 cmd.append("--low_vram")
