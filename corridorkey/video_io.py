@@ -508,6 +508,13 @@ class SequentialHintVideoWindowReader:
             raise RuntimeError(f"Could not open hint video: {hint_video_path}")
         self.start_frame = int(meta["start_frame"])
         self.n_frames = int(meta["num_frames"])
+        hint_n_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        required_frames = self.start_frame + self.n_frames
+        if hint_n_frames > 0 and hint_n_frames < required_frames:
+            raise ValueError(
+                f"Hint video {hint_video_path} has only {hint_n_frames} frames, "
+                f"but the source video requires {required_frames} frames "
+                f"(start={self.start_frame}, num={self.n_frames})")
         if self.start_frame:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.start_frame)
         self.next_t = 0
