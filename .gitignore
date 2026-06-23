@@ -9,8 +9,12 @@ venv/
 .env
 
 # Large Assets and Pretrained Weights
-weights/
-vfms/
+weights/**
+!weights/**/
+!weights/**/*.gitkeep
+vfms/**
+!vfms/**/
+!vfms/**/*.gitkeep
 *.tar.zst
 *.tar
 *.zst
