@@ -12,6 +12,20 @@ weights, and the local foundation-model assets used by the model:
 Everything loads from package-local paths. The runtime sets Hugging Face offline
 mode internally and should not try to download model weights.
 
+## Model Weights & Assets (Required Setup)
+
+The large model weights and foundation assets (~5.2 GB total) are excluded from Git. You must download and extract the `weights_and_vfms.tar.gz` archive in the root of the repository before running inference.
+
+From the package root directory:
+```bash
+tar -xzf weights_and_vfms.tar.gz
+```
+
+This will automatically populate:
+- `weights/` (contains `corridorkey_v2.pt` and `foundation_stats.pt`)
+- `vfms/` (contains `moge/`, `rvm/`, and `cradio/` assets)
+
+
 ## Environment
 
 Use an existing CUDA-capable PyTorch environment. This package was tested with:
