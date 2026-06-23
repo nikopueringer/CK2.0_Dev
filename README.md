@@ -219,9 +219,8 @@ Available output choices:
 
 - `alpha`: matte preview.
 - `fg`: raw foreground RGB prediction preview.
-- `checker`: predicted foreground composited over a checkerboard.
-- `cutout`: predicted foreground multiplied by predicted alpha.
-- `despill`: checker composite with the included 0.5-strength despill preview.
+- `checker`: predicted foreground composited over a checkerboard with customizable despill applied.
+- `cutout`: predicted foreground multiplied by predicted alpha (un-premultiplied straight color, despilled).
 
 `raw_fg` and `foreground` are accepted aliases for `fg`.
 
@@ -231,12 +230,32 @@ Select outputs explicitly:
 python infer.py \
   --input shot.mp4 \
   --output_dir out_review \
-  --outputs alpha fg checker cutout despill
+  --outputs alpha fg checker cutout
 ```
 
 Performance note: each additional output requires more GPU rendering work and
 more ffmpeg encoding. For fastest normal use, keep the default `alpha fg`. Add
-`checker`, `cutout`, or `despill` for review renders.
+`checker` or `cutout` for review renders.
+
+### Despill Strength
+
+Use `--despill_strength` (value from `0.0` for no despill to `1.0` for full despill, defaults to `0.5`) to configure the despill amount applied to the `checker` and `cutout` outputs.
+
+```
+python infer.py \
+  --input shot.mp4 \
+  --output_dir out_despill \
+  --outputs checker cutout \
+  --despill_strength 0.75
+```
+
+### Cutout Linear
+
+By default, the straight color for the `cutout` output is in sRGB color space. If you want to export the cutout as straight scene-linear RGB instead of sRGB (common for linear VFX compositing pipelines), pass:
+
+```
+--cutout_linear
+```
 
 `--stage2_batch` controls how many final-resolution frames are run and rendered
 together in stage 2. The default is `4`.
@@ -316,11 +335,10 @@ python infer.py \
   --output_dir out_frames
 ```
 
-EXR frame directories are treated as display-coded by default. If the EXRs are
-scene-linear RGB, pass:
+Frame directories are treated as display-coded by default. If the incoming image sequence is scene-linear RGB (e.g. for linear EXR sequences), pass:
 
 ```
---frame_dir_exr_linear
+--frame_dir_linear
 ```
 
 Example:
@@ -329,7 +347,7 @@ Example:
 python infer.py \
   --input /path/to/linear_exr_frames \
   --frame_dir_fps 24 \
-  --frame_dir_exr_linear \
+  --frame_dir_linear \
   --output_dir out_exr
 ```
 
@@ -360,17 +378,17 @@ explicit input contract:
   and treated as display-coded sRGB/Rec.709-like footage.
 - PNG/JPG frame directories are treated the same way: display-coded RGB in
   `[0, 1]`.
-- EXR frame directories are also treated as display-coded by default.
-- If EXR frames are already scene-linear RGB, pass `--frame_dir_exr_linear`.
+- Frame directories are also treated as display-coded by default.
+- If frames are already scene-linear RGB, pass `--frame_dir_linear`.
 
 For display-coded inputs, the runtime converts RGB to an internal scene-linear
 working value with the package gamma function, then applies the model's signed
 asinh HDR encoding. Model outputs are decoded back through the inverse path for
 video previews.
 
-For `--frame_dir_exr_linear`, the EXR RGB values are passed as scene-linear
+For `--frame_dir_linear`, the incoming RGB values are passed as scene-linear
 values directly into the model's signed asinh encoding. This is the path to use
-for unclipped linear EXR workflows.
+for unclipped linear image sequence workflows (e.g. EXR sequences).
 
 The foundation models are different: C-RADIO, MoGe, and RVM receive SDR-style
 RGB proxies because those models expect normal image-like inputs. They do not
@@ -390,10 +408,10 @@ Practical guidance:
 - For ordinary sRGB/Rec.709-looking MP4/ProRes review footage, use the video
   directly.
 - For linear EXR plates, use a frame directory and pass
-  `--frame_dir_exr_linear`.
+  `--frame_dir_linear`.
 - For Log, PQ/HLG, ACEScg, Rec.2020, or other managed-color sources, convert
   upstream into either display-coded RGB for the video path or scene-linear RGB
-  EXR frames for the linear EXR path.
+  frames for the linear path.
 
 ## Brightness And Contrast Controls
 
@@ -446,14 +464,14 @@ python infer.py \
   --no_carry_hint
 ```
 
-Review render with checker and despill:
+Review render with checker and cutout:
 
 ```
 python infer.py \
   --input shot.mp4 \
   --output_dir out_review \
   --hint_first_frame matte_frame_0001.png \
-  --outputs alpha fg checker despill
+  --outputs alpha fg checker cutout
 ```
 
 Lower-memory 8-frame windows:
